@@ -1,0 +1,6 @@
+{
+    "list":[
+        {"name":"url1","value":"https://example.com/oauth2/authoriaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+        {"name":"url2","value":"http://localhost:8080/realms/#{realm-name}/protocol/openid-connect/auth?client_id=#{clientid}&response_type=code&scope=#{scope}&redirect_uri=#{redirect_uri}&state=#{state}"}
+    ]
+}

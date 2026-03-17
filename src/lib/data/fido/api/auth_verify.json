@@ -1,0 +1,26 @@
+{
+  "group": "fido auth",
+  "display": "FIDO認証の署名送信",
+  "description": "生成した署名データを送信しログインを検証します",
+  "method": "POST",
+  "url": "http://localhost:3000/api/fido/login/verify",
+  "headers": [
+    {
+      "name": "Content-Type",
+      "value": "application/json; charset=UTF-8"
+    }
+  ],
+  "queries": [],
+  "body": {
+    "id": "#{auth.id}",
+    "rawId": "#{auth.rawId}",
+    "type": "public-key",
+    "response": {
+      "clientDataJSON": "#{auth.clientDataJSON}",
+      "authenticatorData": "#{auth.authenticatorData}",
+      "signature": "#{auth.signature}",
+      "userHandle": "#{auth.userHandle}"
+    },
+    "clientExtensionResults": {}
+  }
+}

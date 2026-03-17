@@ -1,0 +1,11 @@
+{
+    "group": "userinfo",
+    "display": "UserInfo Request",
+    "description": "アクセストークンを使用してユーザー属性情報を取得します。",
+    "method": "GET",
+    "url": "http://#{host}:8080/realms/#{realm-name}/protocol/openid-connect/userinfo",
+    "headers": [
+        { "name": "Authorization", "value": "Bearer ${access_token}" }
+    ],
+    "queries": []
+}

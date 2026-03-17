@@ -1,0 +1,20 @@
+{
+    "list":[
+        {
+            "label":"server1",
+            "items":[
+                {"name":"realm-name","value":"test"},
+                {"name":"name22","value":"value22"},
+                {"name":"host","value":"localhost"}
+            ]
+        },
+        {
+            "label":"server2",
+            "items":[
+                {"name":"realm-name","value":"test"},
+                {"name":"name22","value":"value22"},
+                {"name":"host","value":"172.23.160.1"}
+            ]
+        }
+    ]
+}

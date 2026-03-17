@@ -1,0 +1,23 @@
+{
+  "group": "fido key make",
+  "display": "FIDO認証の公開鍵を送る",
+  "description": "FIDO認証の公開鍵を送る",
+  "method": "POST",
+  "url": "http://localhost:3000/api/fido/register/verify",
+  "headers": [
+    {
+      "name": "Content-Type",
+      "value": "application/json; charset=UTF-8"
+    }
+  ],
+  "queries": [],
+  "body": {
+    "id": "#{gen.id}",
+    "rawId": "#{gen.rawId}",
+    "type": "public-key",
+    "response": {
+      "clientDataJSON": "#{gen.clientDataJSON}",
+      "attestationObject": "#{gen.attestationObject}"
+    }
+  }
+}

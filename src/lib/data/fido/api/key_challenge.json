@@ -1,0 +1,12 @@
+{
+    "group": "fido key challenge",
+    "display": "FIDO認証のチャレンジを取得",
+    "description": "FIDO認証のチャレンジを取得するAPIエンドポイントです。",
+    "method": "POST",
+    "url": "http://localhost:3000/api/fido/register/options",
+    "headers": [
+        { "name": "Content-Type", "value": "application/json; charset=UTF-8" }
+    ],
+    "queries": [],
+    "body": { "username": "myname"}
+}

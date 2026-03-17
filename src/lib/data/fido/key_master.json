@@ -1,0 +1,34 @@
+{
+  "activeProfile": "ios", 
+  
+  "ios": {
+    "aaguid": "00000000-0000-0000-0000-000000000000",
+    "supportedAlgorithms": [-7],
+    "authenticatorAttachment": "platform",
+    "uvInitialized": true,
+    "defaultFlags": {
+      "up": true,
+      "uv": true,
+      "be": true,
+      "bs": true,
+      "at": true,
+      "ed": false
+    },
+    "origin": "http://localhost:3000"
+  },
+  "android": {
+    "aaguid": "00000000-0000-0000-0000-000000000000",
+    "supportedAlgorithms": [-7],
+    "authenticatorAttachment": "platform",
+    "uvInitialized": true,
+    "defaultFlags": {
+      "up": true,
+      "uv": true,
+      "be": true,
+      "bs": true,
+      "at": true,
+      "ed": false
+    },
+    "hash": "android:apk-key-hash:D8:A0:83:...:89:33" 
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "group": "fido auth",
+  "display": "FIDO認証のチャレンジ取得",
+  "description": "FIDO認証用のチャレンジを取得します",
+  "method": "POST",
+  "url": "http://localhost:3000/api/fido/login/options",
+  "headers": [
+    {
+      "name": "Content-Type",
+      "value": "application/json; charset=UTF-8"
+    }
+  ],
+  "queries": [],
+  "body": {
+    "userId": "#{selected_key_user_id}"
+  }
+}

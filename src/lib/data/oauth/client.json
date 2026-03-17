@@ -1,0 +1,19 @@
+{
+    "list":[
+        {
+            "label":"client1",
+            "items":[
+                {"name":"clientid","value":"clientid1"},
+                {"name":"secret","value":"value2"}
+            ]
+        },
+        {
+            "label":"client2",
+            "items":[
+                {"name":"clientid","value":"clientid1"},
+                {"name":"secret","value":"7okMfeWfCC82H0bDsIGv9eFPB2szQdDg"},
+                {"name":"redirect_uri","value":"http://localhost:10000/oauth/callback"}
+            ]
+        }
+    ]
+}

@@ -1,0 +1,16 @@
+{
+    "group": "sample",
+    "display": "POSTJSON",
+    "description": "POSTJSON",
+    "method": "POST",
+    "url": "http://#{host}:8080/realms/#{realm-name}/protocol/openid-connect/token",
+    "headers": [
+        { "name": "Content-Type", "value": "application/json" },
+        { "name": "Authorization", "value": "Basic #{secret_base64}" }
+    ],
+    "queries": [
+        { "name": "q1", "value": "v1" },
+        { "name": "q2", "value": "#{state}" }
+    ],
+    "body": { "name": "grant_type", "value": "authorization_code" }
+}
