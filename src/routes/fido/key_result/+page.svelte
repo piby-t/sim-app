@@ -167,7 +167,7 @@
     <h4 class="mb-0 fw-bold"><i class="bi bi-check-circle-fill text-success me-2"></i>API 実行結果</h4>
     
     <Button color="indigo" class="fw-bold shadow-sm" onclick={() => {
-      goto(resolve('/fido/auth_gen'));
+      goto(resolve('/fido/auth_challenge'));
     }}>
       Auth Challenge <i class="bi bi-arrow-right ms-1"></i>
     </Button>

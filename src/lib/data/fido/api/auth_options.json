@@ -12,6 +12,6 @@
   ],
   "queries": [],
   "body": {
-    "userId": "#{selected_key_user_id}"
+    "userId": "#{key.userId}"
   }
 }

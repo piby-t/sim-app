@@ -166,7 +166,7 @@
                   >
                 </li>
                 <li>
-                  <a href={resolve("/fido/key_gen")} onclick={closeMenu}
+                  <a href={resolve("/fido/auth_challenge")} onclick={closeMenu}
                     >Auth Challenge</a
                   >
                 </li>
