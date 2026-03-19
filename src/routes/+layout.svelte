@@ -1,13 +1,17 @@
 <script lang="ts">
   /**
    * アプリケーション・ルートレイアウト (Svelte 5 / SvelteKit 最新準拠)
-   * 修正：deprecated な base を廃止し、型安全な resolve() を導入
+   * 閉塞環境対応：Bootstrap をローカルインポートに変更
    */
   import favicon from "$lib/assets/favicon.svg";
   import { onMount, setContext } from "svelte";
-  import { resolve } from "$app/paths"; // base の代わりに resolve を使用
+  import { resolve } from "$app/paths";
   import { Container, Button, Row, Col } from "@sveltestrap/sveltestrap";
+  
+  // ✅ node_modules から直接インポート (閉塞環境対応)
   import "bootstrap/dist/css/bootstrap.min.css";
+  // もし bootstrap-icons もインストール済みなら以下を有効化してください
+  // import "bootstrap-icons/font/bootstrap-icons.css";
 
   // ステート管理用のインポート
   import { SelectArrayText2State } from "$lib/state/SelectArrayText2State.svelte";
@@ -39,15 +43,13 @@
 
   // メニュー制御ロジック
   let isMenuOpen = $state(false);
-  const toggleMenu = () => {
-    isMenuOpen = !isMenuOpen;
-  };
-  const closeMenu = () => {
-    isMenuOpen = false;
-  };
+  const toggleMenu = () => { isMenuOpen = !isMenuOpen; };
+  const closeMenu = () => { isMenuOpen = false; };
 
   $effect(() => {
-    document.body.style.overflow = isMenuOpen ? "hidden" : "";
+    if (typeof document !== 'undefined') {
+      document.body.style.overflow = isMenuOpen ? "hidden" : "";
+    }
   });
 
   // 時計のロジック
@@ -80,29 +82,16 @@
 
 <div class="app-wrapper">
   <header class="main-header shadow-sm bg-dark text-white">
-    <Container
-      fluid
-      class="d-flex align-items-center justify-content-between h-100"
-    >
+    <Container fluid class="d-flex align-items-center justify-content-between h-100">
       <div class="d-flex align-items-center">
-        <Button
-          color="primary"
-          size="sm"
-          class="me-3 fw-bold shadow-sm"
-          onclick={toggleMenu}
-        >
+        <Button color="primary" size="sm" class="me-3 fw-bold shadow-sm" onclick={toggleMenu}>
           {isMenuOpen ? "閉じる ×" : "MENU ☰"}
         </Button>
-        <a
-          href={resolve("/")}
-          class="text-white text-decoration-none d-flex align-items-center"
-          onclick={closeMenu}
-        >
+        <a href={resolve("/")} class="text-white text-decoration-none d-flex align-items-center" onclick={closeMenu}>
           <img src={favicon} alt="logo" width="20" class="me-2" />
           <span class="fw-bold d-none d-sm-inline">ID Simulator</span>
         </a>
       </div>
-
       <div class="font-monospace small clock-area">
         {timeString}
       </div>
@@ -127,85 +116,36 @@
         <Container class="py-5">
           <Row>
             <Col md="4" class="mb-5">
-              <h6 class="text-primary fw-bold border-bottom pb-2 mb-3">
-                OAuth / OIDC
-              </h6>
+              <h6 class="text-primary fw-bold border-bottom pb-2 mb-3">OAuth / OIDC</h6>
               <ul class="list-unstyled menu-list">
-                <li>
-                  <a href={resolve("/oauth/authorization")} onclick={closeMenu}
-                    >Authorization Request</a
-                  >
-                </li>
-                <li>
-                  <a href={resolve("/oauth/api")} onclick={closeMenu}
-                    >API Execution</a
-                  >
-                </li>
-                <li>
-                  <a
-                    href={resolve("/oauth/clientcredentials")}
-                    onclick={closeMenu}>Client Credentials</a
-                  >
-                </li>
+                <li><a href={resolve("/oauth/authorization")} onclick={closeMenu}>Authorization Request</a></li>
+                <li><a href={resolve("/oauth/api")} onclick={closeMenu}>API Execution</a></li>
+                <li><a href={resolve("/oauth/clientcredentials")} onclick={closeMenu}>Client Credentials</a></li>
               </ul>
             </Col>
 
             <Col md="4" class="mb-5">
-              <h6 class="text-success fw-bold border-bottom pb-2 mb-3">
-                FIDO / Passkeys
-              </h6>
+              <h6 class="text-success fw-bold border-bottom pb-2 mb-3">FIDO / Passkeys</h6>
               <ul class="list-unstyled menu-list">
-                <li>
-                  <a href={resolve("/fido/key_challenge")} onclick={closeMenu}
-                    >Key Challenge & Generation</a
-                  >
-                </li>
-                <li>
-                  <a href={resolve("/fido/key_gen")} onclick={closeMenu}
-                    >Key Registration</a
-                  >
-                </li>
-                <li>
-                  <a href={resolve("/fido/auth_challenge")} onclick={closeMenu}
-                    >Auth Challenge</a
-                  >
-                </li>
-                <li>
-                  <a href={resolve("/fido/auth_gen")} onclick={closeMenu}
-                    >Auth Verification</a
-                  >
-                </li>
+                <li><a href={resolve("/fido/key_challenge")} onclick={closeMenu}>Key Challenge & Generation</a></li>
+                <li><a href={resolve("/fido/key_gen")} onclick={closeMenu}>Key Registration</a></li>
+                <li><a href={resolve("/fido/auth_challenge")} onclick={closeMenu}>Auth Challenge</a></li>
+                <li><a href={resolve("/fido/auth_gen")} onclick={closeMenu}>Auth Verification</a></li>
               </ul>
             </Col>
 
             <Col md="4" class="mb-5">
-              <h6 class="text-primary fw-bold border-bottom pb-2 mb-3">
-                Common
-              </h6>
+              <h6 class="text-primary fw-bold border-bottom pb-2 mb-3">Common</h6>
               <ul class="list-unstyled menu-list">
-                <li>
-                  <a href={resolve("/comn/history")} onclick={closeMenu}
-                    >Execution History</a
-                  >
-                </li>
+                <li><a href={resolve("/comn/history")} onclick={closeMenu}>Execution History</a></li>
               </ul>
             </Col>
 
             <Col md="4" class="mb-5">
-              <h6 class="text-warning fw-bold border-bottom pb-2 mb-3">
-                Tools & Utils
-              </h6>
+              <h6 class="text-warning fw-bold border-bottom pb-2 mb-3">Tools & Utils</h6>
               <ul class="list-unstyled menu-list">
-                <li>
-                  <a href={resolve("/tools/jsonformatter")} onclick={closeMenu}
-                    >JSON Formatter</a
-                  >
-                </li>
-                <li>
-                  <a href={resolve("/tools/memo")} onclick={closeMenu}
-                    >Quick Memo</a
-                  >
-                </li>
+                <li><a href={resolve("/tools/jsonformatter")} onclick={closeMenu}>JSON Formatter</a></li>
+                <li><a href={resolve("/tools/memo")} onclick={closeMenu}>Quick Memo</a></li>
               </ul>
             </Col>
           </Row>
@@ -229,18 +169,18 @@
     display: flex;
     flex-direction: column;
     min-height: 100vh;
-  } /* height を min-height に変更 */
+  }
   .main-header {
     height: 50px;
     flex-shrink: 0;
     z-index: 2001;
     position: sticky;
     top: 0;
-  } /* スクロールしても上部に固定されるように変更 */
+  }
   .main-body {
     flex: 1;
     width: 100%;
-  } /* overflow-y: auto を削除 */
+  }
   .menu-overlay {
     position: fixed;
     top: 50px;
@@ -263,14 +203,8 @@
     animation: slideDown 0.15s ease-out;
   }
   @keyframes slideDown {
-    from {
-      transform: translateY(-10px);
-      opacity: 0;
-    }
-    to {
-      transform: translateY(0);
-      opacity: 1;
-    }
+    from { transform: translateY(-10px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
   }
   .menu-list a {
     text-decoration: none;
