@@ -1,29 +1,21 @@
 <script lang="ts">
-  /**
-   * FIDO Challenge 取得リクエスト画面
-   * 対策：resolveDeepによるオブジェクト置換、名前衝突回避、Each Key付与
-   */
-  import { 
-    Container, Row, Col, Card, CardBody, CardHeader, 
-    Button, Table, Badge 
-  } from "@sveltestrap/sveltestrap";
+  import { Container, Row, Col, Card, CardBody, CardHeader, Button, Table, Badge } from "@sveltestrap/sveltestrap";
   import { getContext, untrack, onMount } from "svelte";
-  import { SvelteURLSearchParams } from "svelte/reactivity"; // リンター対策の追加
+  import { SvelteURLSearchParams } from "svelte/reactivity";
   import { goto } from "$app/navigation";
   import { browser } from "$app/environment";
   import { SERVER_CONTEXT_NAME, CLIENT_CONTEXT_NAME } from "$lib/state/StateConst";
   
   import ArrayText2 from "$lib/components/ArrayText2.svelte";
   import SelectArrayText2 from "$lib/components/SelectArrayText2.svelte";
-  import ClientBasic from "$lib/components/ClientBasic.svelte"; // ✅ クライアントコンポーネントを追加
+  import ClientBasic from "$lib/components/ClientBasic.svelte";
+  import ApiCatalogSelector from "$lib/components/ApiCatalogSelector.svelte";
 
-  // ユーティリティと型のインポート (util フォルダ)
   import { resolveDeep } from "$lib/util/resolver";
   import type { SelectArrayText2State } from "$lib/state/SelectArrayText2State.svelte";
   import type { NameValue, ApiDefinition, SelectArrayText2Props, JsonValue } from "$lib/types";
   import type { PageData } from "./$types";
 
-  // JSON プリセットのインポート
   import serverJson from "$lib/data/oauth/server.json"; 
   import clientJson from "$lib/data/oauth/client.json";
   import staticJson from "$lib/data/oauth/static.json";
@@ -34,7 +26,6 @@
   const createFreshServer = () => structuredClone(serverJson.list) as SelectArrayText2Props[];
   const createFreshClient = () => structuredClone(clientJson.list) as SelectArrayText2Props[];
 
-  // 状態管理
   let selectedApi = $state<ApiDefinition | null>(null);
   let serverPresets = $state(createFreshServer());
   let clientPresets = $state(createFreshClient());
@@ -44,28 +35,22 @@
 
   onMount(() => {
     const hardReset = () => {
-      sessionValues = structuredClone(data.sessionContext);
+      sessionValues = structuredClone(data.sessionContext) || [];
       serverPresets = createFreshServer();
       clientPresets = createFreshClient();
       staticPresets = createFreshStatic();
-      console.log("FIDO Challenge: States refreshed.");
     };
     untrack(() => hardReset());
-
-    const handlePageShow = (event: PageTransitionEvent) => {
-      if (event.persisted) hardReset();
-    };
+    const handlePageShow = (event: PageTransitionEvent) => { if (event.persisted) hardReset(); };
     window.addEventListener("pageshow", handlePageShow);
     return () => window.removeEventListener("pageshow", handlePageShow);
   });
 
   const serverState = getContext<SelectArrayText2State>(SERVER_CONTEXT_NAME);
   const clientState = getContext<SelectArrayText2State>(CLIENT_CONTEXT_NAME);
-
   let selectedServerData = $derived(serverPresets.find((p) => p.label === serverState.value));
   let selectedClientData = $derived(clientPresets.find((p) => p.label === clientState.value));
 
-  // 変数置換パラメータの集約
   let allParams = $derived.by(() => {
     const params: Record<string, string> = {};
     sessionValues.forEach((v) => { params[v.name] = v.value; });
@@ -76,89 +61,39 @@
     return params;
   });
 
-  /**
-   * 文字列・オブジェクト共通の置換エンジン
-   * gotoとの名前衝突を防ぐため processTemplate に変更
-   */
   function processTemplate<T>(input: T): T {
     if (input === null || input === undefined) return input;
     return resolveDeep(input as JsonValue, allParams) as T;
   }
 
-  // 電文プレビューの派生 (URLに queries を安全に結合する処理を追加)
   let resolvedUrl = $derived.by(() => {
     if (!selectedApi) return "";
-    
     let baseUrl = String(processTemplate(selectedApi.url));
-
     if (selectedApi.queries && selectedApi.queries.length > 0) {
       const params = new SvelteURLSearchParams();
-      
-      selectedApi.queries.forEach(q => {
-        if (q.name) {
-          const resolvedValue = String(processTemplate(q.value));
-          params.append(q.name, resolvedValue);
-        }
-      });
-      
-      const queryString = params.toString();
-      if (queryString) {
-        baseUrl += (baseUrl.includes('?') ? '&' : '?') + queryString;
-      }
+      selectedApi.queries.forEach(q => { if (q.name) params.append(q.name, String(processTemplate(q.value))); });
+      baseUrl += (baseUrl.includes('?') ? '&' : '?') + params.toString();
     }
     return baseUrl;
   });
 
-  let resolvedHeaders = $derived(
-    selectedApi?.headers.map((h: NameValue) => ({ 
-      name: h.name, 
-      value: processTemplate(h.value) 
-    })) || []
-  );
-
-  let isUrlEncoded = $derived(
-    resolvedHeaders.find(h => h.name.toLowerCase() === 'content-type')?.value.includes('application/x-www-form-urlencoded')
-  );
-
-  let resolvedBody = $derived.by(() => {
-    if (!selectedApi || selectedApi.method === 'GET') return null;
-    // 配列もオブジェクトも丸ごと再帰置換
-    return processTemplate(selectedApi.body);
-  });
+  let resolvedHeaders = $derived(selectedApi?.headers.map((h: NameValue) => ({ name: h.name, value: processTemplate(h.value) })) || []);
+  let isUrlEncoded = $derived(resolvedHeaders.find(h => h.name.toLowerCase() === 'content-type')?.value.includes('application/x-www-form-urlencoded'));
+  let resolvedBody = $derived.by(() => (!selectedApi || selectedApi.method === 'GET') ? null : processTemplate(selectedApi.body));
 
   async function handleExecute() {
-    if (!browser) return; // SSR中の不正なfetchをガード
-    if (!selectedApi) return;
-    
-    const payload = { 
-      method: selectedApi.method, 
-      url: resolvedUrl, 
-      headers: resolvedHeaders,
-      body: resolvedBody,
-      isUrlEncoded: isUrlEncoded
-    };
-
+    if (!browser || !selectedApi) return;
+    const payload = { method: selectedApi.method, url: resolvedUrl, headers: resolvedHeaders, body: resolvedBody, isUrlEncoded };
     try {
       const response = await fetch('/fido/key_challenge_call', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
       });
-      
-      if (response.ok) {
+      if (response.ok) { 
         // eslint-disable-next-line svelte/no-navigation-without-resolve
-        await goto('/fido/key_challenge_result');
-      } else {
-        // ❌ サーバーからエラーが返ってきた場合 (プロキシ越え失敗など)
-        const errorText = await response.text();
-        console.error("API Error:", response.status, errorText);
-        alert(`APIの実行に失敗しました。\nHTTPステータス: ${response.status}\n詳細: ${errorText.substring(0, 200)}`);
+        await goto('/fido/key_challenge_result'); 
       }
-    } catch (err) {
-      // ❌ 通信自体が遮断された場合
-      console.error("Network Error:", err);
-      alert(`通信エラーが発生しました。\nネットワーク接続やプロキシの設定を確認してください。\n${err}`);
-    }
+      else { alert(`API Error: ${response.status}`); }
+    } catch (err) { alert(`Network Error: ${err}`); }
   }
 </script>
 
@@ -167,50 +102,20 @@
     <Col md="6">
       <Card class="shadow-sm border-0">
         <CardHeader class="bg-indigo text-white py-2">
-          <h6 class="mb-0 fw-bold"><i class="bi bi-shield-lock me-2"></i>FIDO Challenge リクエスト設定</h6>
+          <h6 class="mb-0 fw-bold small"><i class="bi bi-shield-lock me-2"></i>FIDO Challenge リクエスト設定</h6>
         </CardHeader>
         <CardBody>
           <div class="mb-3">
             <h6 class="text-indigo small fw-bold mb-1">API カタログ</h6>
-            <select class="form-select form-select-sm shadow-sm" onchange={(e) => {
-              const val = e.currentTarget.value;
-              if (!val) { selectedApi = null; return; }
-              const [group, fileName] = val.split('|');
-              selectedApi = data.apiCatalog[group].find((a: ApiDefinition) => a.fileName === fileName) || null;
-            }}>
-              <option value="">APIを選択してください...</option>
-              {#each Object.entries(data.apiCatalog) as [group, list] (group)}
-                <optgroup label={group}>
-                  {#each list as api (api.fileName)}
-                    <option value="{group}|{api.fileName}">{api.display}</option>
-                  {/each}
-                </optgroup>
-              {/each}
-            </select>
+            <ApiCatalogSelector apiCatalog={data.apiCatalog} bind:selectedApi />
           </div>
-
           <div class="mb-3 pb-2 border-bottom">
-            <h6 class="text-indigo small fw-bold mb-1">
-              <i class="bi bi-clock-history me-1"></i>Session Context
-            </h6>
+            <h6 class="text-indigo small fw-bold mb-1"><i class="bi bi-clock-history me-1"></i>Session Context</h6>
             <ArrayText2 bind:items={sessionValues} />
           </div>
-
-          <div class="mb-3">
-            <h6 class="text-indigo mb-1 small fw-bold"><i class="bi bi-server me-1"></i>RPサーバー設定</h6>
-            <SelectArrayText2 bind:presets={serverPresets} bind:selectedLabel={serverState.value} />
-          </div>
-
-          <div class="mb-3">
-            <h6 class="text-indigo mb-1 small fw-bold"><i class="bi bi-person-badge me-1"></i>クライアント設定</h6>
-            <SelectArrayText2 bind:presets={clientPresets} bind:selectedLabel={clientState.value} />
-            <ClientBasic clientData={selectedClientData} bind:result={secretBase64} />
-          </div>
-
-          <div class="mb-1">
-            <h6 class="text-indigo mb-1 small fw-bold"><i class="bi bi-gear-fill me-1"></i>Static設定 (共通変数)</h6>
-            <ArrayText2 bind:items={staticPresets} />
-          </div>
+          <div class="mb-3"><h6 class="text-indigo mb-1 small fw-bold">RPサーバー設定</h6><SelectArrayText2 bind:presets={serverPresets} bind:selectedLabel={serverState.value} /></div>
+          <div class="mb-3"><h6 class="text-indigo mb-1 small fw-bold">クライアント設定</h6><SelectArrayText2 bind:presets={clientPresets} bind:selectedLabel={clientState.value} /><ClientBasic clientData={selectedClientData} bind:result={secretBase64} /></div>
+          <div class="mb-1"><h6 class="text-indigo mb-1 small fw-bold">Static設定 (共通変数)</h6><ArrayText2 bind:items={staticPresets} /></div>
         </CardBody>
       </Card>
     </Col>
@@ -225,63 +130,24 @@
           {#if selectedApi}
             <div class="mb-3">
               <div class="fw-bold small border-bottom mb-1 text-muted">URL</div>
-              <div class="text-break text-primary small" style="font-size: 0.8rem;">{resolvedUrl}</div>
+              <div class="text-break text-primary small">{resolvedUrl}</div>
             </div>
-
             <div class="mb-3">
               <div class="fw-bold small border-bottom mb-1 text-muted">Headers</div>
-              <Table size="sm" class="bg-white border mb-0" style="table-layout: fixed; font-size: 0.75rem;">
+              <Table size="sm" class="bg-white border mb-0 small">
                 <tbody>
                   {#each resolvedHeaders as h (h.name)}
-                    <tr>
-                      <td class="fw-bold bg-light-subtle" style="width:35%">{h.name}</td>
-                      <td class="text-break">{h.value}</td>
-                    </tr>
+                    <tr><td class="fw-bold" style="width:35%">{h.name}</td><td class="text-break">{h.value}</td></tr>
                   {/each}
                 </tbody>
               </Table>
             </div>
-
             {#if selectedApi.method !== 'GET'}
-              <div class="mb-3">
-                <div class="fw-bold small border-bottom mb-1 text-muted">Body</div>
-                {#if isUrlEncoded && Array.isArray(resolvedBody)}
-                  <Table size="sm" class="bg-white border mb-0 small">
-                    <tbody>
-                      {#each resolvedBody as b (b.name)}
-                        <tr>
-                          <td class="fw-bold bg-light-subtle" style="width:35%">{b.name}</td>
-                          <td class="text-break">{b.value}</td>
-                        </tr>
-                      {/each}
-                    </tbody>
-                  </Table>
-                {:else if Array.isArray(resolvedBody)}
-                  <Table size="sm" class="bg-white border mb-0 small">
-                    <tbody>
-                      {#each resolvedBody as b (b.name)}
-                        <tr>
-                          <td class="fw-bold bg-light-subtle" style="width:35%">{b.name}</td>
-                          <td class="text-break">{b.value}</td>
-                        </tr>
-                      {/each}
-                    </tbody>
-                  </Table>
-                {:else}
-                  <pre class="p-2 bg-white border rounded small full-view mb-0"><code>{typeof resolvedBody === 'string' ? resolvedBody : JSON.stringify(resolvedBody, null, 2)}</code></pre>
-                {/if}
-              </div>
+              <div class="mb-3 border-bottom pb-1"><div class="fw-bold small text-muted">Body</div><pre class="p-2 bg-white border rounded small"><code>{typeof resolvedBody === 'string' ? resolvedBody : JSON.stringify(resolvedBody, null, 2)}</code></pre></div>
             {/if}
-
-            <div class="d-grid mt-4">
-              <Button class="btn-indigo btn-lg fw-bold shadow" onclick={handleExecute}>
-                <i class="bi bi-lightning-fill me-2"></i>Challenge 取得実行
-              </Button>
-            </div>
+            <div class="d-grid mt-4"><Button color="indigo" size="lg" class="fw-bold shadow" onclick={handleExecute}><i class="bi bi-lightning-fill me-2"></i>Challenge 取得実行</Button></div>
           {:else}
-            <div class="py-5 text-center text-muted">
-              <i class="bi bi-arrow-left-circle me-2"></i>APIを選択してください
-            </div>
+            <div class="py-5 text-center text-muted small">APIを選択してください</div>
           {/if}
         </CardBody>
       </Card>
@@ -292,14 +158,5 @@
 <style>
   :global(.bg-indigo) { background-color: #6610f2 !important; }
   :global(.text-indigo) { color: #6610f2 !important; }
-  :global(.btn-indigo) { background-color: #6610f2 !important; color: white !important; }
-  :global(.btn-indigo:hover) { background-color: #520dc2 !important; color: white !important; }
-  
-  pre.full-view { 
-    white-space: pre-wrap; 
-    word-break: break-all; 
-    font-size: 0.75rem;
-    line-height: 1.2;
-  }
-  .text-break { word-break: break-all; }
+  pre { white-space: pre-wrap; word-break: break-all; font-size: 0.75rem; }
 </style>

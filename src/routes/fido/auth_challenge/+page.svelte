@@ -10,6 +10,7 @@
   import SelectArrayText2 from "$lib/components/SelectArrayText2.svelte";
   import ClientBasic from "$lib/components/ClientBasic.svelte";
   import KeyFileSelector from "$lib/components/KeyFileSelector.svelte";
+  import ApiCatalogSelector from "$lib/components/ApiCatalogSelector.svelte"; // ✅ 追加
 
   import type { SelectArrayText2State } from "$lib/state/SelectArrayText2State.svelte";
   import type { NameValue, ApiDefinition, SelectArrayText2Props, CredentialRecord } from "$lib/types";
@@ -34,7 +35,6 @@
   let sessionValues = $state<NameValue[]>([]);
 
   const keyFiles = $derived(data.keyFiles || []);
-  // ✅ 修正: anyを排除し型安全に
   const keyContents = $derived(data.keyContents as Record<string, CredentialRecord> || {});
 
   onMount(() => {
@@ -52,29 +52,17 @@
 
   const serverState = getContext<SelectArrayText2State>(SERVER_CONTEXT_NAME);
   const clientState = getContext<SelectArrayText2State>(CLIENT_CONTEXT_NAME);
-
   const selectedServerData = $derived(serverPresets.find((p) => p.label === serverState.value));
   const selectedClientData = $derived(clientPresets.find((p) => p.label === clientState.value));
 
-  /**
-   * ✅ 置換用パラメータ辞書の構築
-   * 鍵ファイルの 1 階層目の項目を key.xxx として登録
-   */
   let allParams = $derived.by(() => {
     const params: Record<string, string> = {};
     sessionValues.forEach((v) => { if (v.name) params[v.name] = v.value; });
-
     if (selectedKeyFile && keyContents[selectedKeyFile]) {
       const k = keyContents[selectedKeyFile];
-      // ✅ 修正: 型安全なプロパティアクセス
       const targetKeys: (keyof CredentialRecord)[] = ['credentialId', 'rpId', 'userId', 'userName', 'displayName'];
-      targetKeys.forEach(prop => {
-        if (k[prop] !== undefined) {
-          params[`key.${prop}`] = String(k[prop]);
-        }
-      });
+      targetKeys.forEach(prop => { if (k[prop] !== undefined) params[`key.${prop}`] = String(k[prop]); });
     }
-
     selectedServerData?.items.forEach((i) => { if (i.name) params[i.name] = i.value; });
     selectedClientData?.items.forEach((i) => { if (i.name) params[i.name] = i.value; });
     staticPresets.forEach((i) => { if (i.name) params[i.name] = i.value; });
@@ -82,9 +70,6 @@
     return params;
   });
 
-  /**
-   * ✅ 置換ロジック (ドット対応版)
-   */
   function processTemplate(input: unknown): unknown {
     if (typeof input === 'string') {
       return input.replace(/\${([\w.-]+)}|#{([\w.-]+)}/g, (match, p1, p2) => {
@@ -144,23 +129,7 @@
         <CardBody>
           <div class="mb-3">
             <h6 class="text-teal small fw-bold mb-1">API カタログ</h6>
-            <select class="form-select form-select-sm shadow-sm" onchange={(e) => {
-              const val = e.currentTarget.value;
-              if (!val) { selectedApi = null; return; }
-              const [group, fileName] = val.split('|');
-              selectedApi = data.apiCatalog[group]?.find((a: ApiDefinition) => a.fileName === fileName) || null;
-            }}>
-              <option value="">APIを選択してください...</option>
-              {#each Object.entries(data.apiCatalog) as [group, list] (group)}
-                <optgroup label={group}>
-                  {#each list as api (api.fileName)}
-                    <option value="{group}|{api.fileName}">{api.display || api.fileName}</option>
-                  {/each}
-                </optgroup>
-              {:else}
-                <option disabled>カタログが空です</option>
-              {/each}
-            </select>
+            <ApiCatalogSelector apiCatalog={data.apiCatalog} bind:selectedApi />
           </div>
 
           <div class="mb-3 pb-3 border-bottom">
