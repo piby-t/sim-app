@@ -1,4 +1,8 @@
 <script lang="ts">
+  /**
+   * @file FIDO Key Challenge (Registration) Request Page
+   * @description 外部 JSON 読み込み対応・ESLint 警告解消済み完全版
+   */
   import { Container, Row, Col, Card, CardBody, CardHeader, Button, Table, Badge } from "@sveltestrap/sveltestrap";
   import { getContext, untrack, onMount } from "svelte";
   import { SvelteURLSearchParams } from "svelte/reactivity";
@@ -16,16 +20,25 @@
   import type { NameValue, ApiDefinition, SelectArrayText2Props, JsonValue } from "$lib/types";
   import type { PageData } from "./$types";
 
-  import serverJson from "$lib/data/oauth/server.json"; 
-  import clientJson from "$lib/data/oauth/client.json";
-  import staticJson from "$lib/data/oauth/static.json";
+  // ✅ 修正: 外部 JSON の直接 import を削除
 
   let { data }: { data: PageData } = $props();
 
-  const createFreshStatic = () => structuredClone(staticJson.list) as NameValue[];
-  const createFreshServer = () => structuredClone(serverJson.list) as SelectArrayText2Props[];
-  const createFreshClient = () => structuredClone(clientJson.list) as SelectArrayText2Props[];
+  /**
+   * ✅ 修正: 型エラー回避用ヘルパー
+   * data を Record<string, unknown> で受けることで、PageData の同期遅延を回避。
+   */
+  const getListFromData = (key: string): unknown[] => {
+    const rawData = data as Record<string, unknown>;
+    const preset = rawData[key] as { list?: unknown[] } | undefined;
+    return Array.isArray(preset?.list) ? preset.list : [];
+  };
 
+  const createFreshStatic = () => structuredClone(getListFromData('staticPresets')) as NameValue[];
+  const createFreshServer = () => structuredClone(getListFromData('serverPresets')) as SelectArrayText2Props[];
+  const createFreshClient = () => structuredClone(getListFromData('clientPresets')) as SelectArrayText2Props[];
+
+  // --- リアクティブステート ---
   let selectedApi = $state<ApiDefinition | null>(null);
   let serverPresets = $state(createFreshServer());
   let clientPresets = $state(createFreshClient());
@@ -81,6 +94,9 @@
   let isUrlEncoded = $derived(resolvedHeaders.find(h => h.name.toLowerCase() === 'content-type')?.value.includes('application/x-www-form-urlencoded'));
   let resolvedBody = $derived.by(() => (!selectedApi || selectedApi.method === 'GET') ? null : processTemplate(selectedApi.body));
 
+  /**
+   * API 実行処理
+   */
   async function handleExecute() {
     if (!browser || !selectedApi) return;
     const payload = { method: selectedApi.method, url: resolvedUrl, headers: resolvedHeaders, body: resolvedBody, isUrlEncoded };
@@ -89,6 +105,7 @@
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
       });
       if (response.ok) { 
+        // ✅ 修正: ESLint 警告の回避
         // eslint-disable-next-line svelte/no-navigation-without-resolve
         await goto('/fido/key_challenge_result'); 
       }
@@ -121,12 +138,12 @@
     </Col>
 
     <Col md="6">
-      <Card class="shadow-sm border-dark h-100">
+      <Card class="shadow-sm border-dark h-100 sticky-top" style="top: 1rem;">
         <CardHeader class="bg-dark text-white py-2 d-flex justify-content-between align-items-center">
           <h6 class="mb-0 fw-bold small">送信電文プレビュー</h6>
           {#if selectedApi}<Badge color="warning" class="text-dark">{selectedApi.method}</Badge>{/if}
         </CardHeader>
-        <CardBody class="bg-light p-3 font-monospace">
+        <CardBody class="bg-light p-3 font-monospace overflow-auto">
           {#if selectedApi}
             <div class="mb-3">
               <div class="fw-bold small border-bottom mb-1 text-muted">URL</div>
@@ -136,7 +153,7 @@
               <div class="fw-bold small border-bottom mb-1 text-muted">Headers</div>
               <Table size="sm" class="bg-white border mb-0 small">
                 <tbody>
-                  {#each resolvedHeaders as h (h.name)}
+                  {#each resolvedHeaders as h, i (`${h.name}-${i}`)}
                     <tr><td class="fw-bold" style="width:35%">{h.name}</td><td class="text-break">{h.value}</td></tr>
                   {/each}
                 </tbody>
@@ -158,5 +175,5 @@
 <style>
   :global(.bg-indigo) { background-color: #6610f2 !important; }
   :global(.text-indigo) { color: #6610f2 !important; }
-  pre { white-space: pre-wrap; word-break: break-all; font-size: 0.75rem; }
+  pre { white-space: pre-wrap; word-break: break-all; font-size: 0.75rem; background-color: white; border: 1px solid #dee2e6; }
 </style>

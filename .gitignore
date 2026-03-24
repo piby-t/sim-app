@@ -1,6 +1,7 @@
+# Dependencies
 node_modules
 
-# Output
+# Output (SvelteKit Build)
 .output
 .vercel
 .netlify
@@ -8,11 +9,11 @@ node_modules
 /.svelte-kit
 /build
 
-# OS
+# OS files
 .DS_Store
 Thumbs.db
 
-# Env
+# Env files
 .env
 .env.*
 !.env.example
@@ -22,6 +23,10 @@ Thumbs.db
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 
-# FIDO Simulator
-# keyフォルダ内の生成された鍵データ(.json)のみを除外し、フォルダ構造は維持する
-src/lib/data/fido/key/*.json
+# --- FIDO Simulator (External Data Folder) ---
+# data/fido/api 内の JSON は API 定義なので Git で管理（共有）する
+# data/fido/key 内の JSON は実行時に生成される「鍵データ」なので Git から除外する
+data/fido/key/*.json
+
+# 鍵フォルダ自体を Git に認識させるための .gitkeep は許可する場合
+!data/fido/key/.gitkeep

@@ -1,4 +1,8 @@
 <script lang="ts">
+  /**
+   * @file FIDO Auth Generation (Assertion) Page
+   * @description 外部 JSON 読み込み対応・型エラーおよび ESLint 警告解消済み完全版
+   */
   import { Container, Row, Col, Card, CardBody, CardHeader, Button, Table, Badge } from "@sveltestrap/sveltestrap";
   import { getContext, untrack, onMount } from "svelte";
   import { SvelteURLSearchParams } from "svelte/reactivity";
@@ -10,22 +14,32 @@
   import SelectArrayText2 from "$lib/components/SelectArrayText2.svelte";
   import KeyFileSelector from "$lib/components/KeyFileSelector.svelte";
   import ClientBasic from "$lib/components/ClientBasic.svelte";
-  import ApiCatalogSelector from "$lib/components/ApiCatalogSelector.svelte"; // ✅ 追加
+  import ApiCatalogSelector from "$lib/components/ApiCatalogSelector.svelte";
 
   import type { SelectArrayText2State } from "$lib/state/SelectArrayText2State.svelte";
   import type { NameValue, ApiDefinition, SelectArrayText2Props, CredentialRecord } from "$lib/types";
   import type { PageData } from "./$types";
 
-  import serverJson from "$lib/data/oauth/server.json"; 
-  import clientJson from "$lib/data/oauth/client.json";
-  import staticJson from "$lib/data/oauth/static.json";
+  // ✅ 修正: 外部 JSON の直接 import を削除し、PageData 経由に統一
 
   let { data }: { data: PageData } = $props();
 
-  const createFreshStatic = () => structuredClone(staticJson.list) as NameValue[];
-  const createFreshServer = () => structuredClone(serverJson.list) as SelectArrayText2Props[];
-  const createFreshClient = () => structuredClone(clientJson.list) as SelectArrayText2Props[];
+  /**
+   * ✅ 修正: 型エラー回避用ヘルパー
+   * data を Record<string, unknown> で受けることで、自動生成型の同期遅延を回避。
+   * any を使わず unknown[] で返すことで ESLint 警告 (@typescript-eslint/no-explicit-any) を防ぎます。
+   */
+  const getListFromData = (key: string): unknown[] => {
+    const rawData = data as Record<string, unknown>;
+    const preset = rawData[key] as { list?: unknown[] } | undefined;
+    return Array.isArray(preset?.list) ? preset.list : [];
+  };
 
+  const createFreshStatic = () => structuredClone(getListFromData('staticPresets')) as NameValue[];
+  const createFreshServer = () => structuredClone(getListFromData('serverPresets')) as SelectArrayText2Props[];
+  const createFreshClient = () => structuredClone(getListFromData('clientPresets')) as SelectArrayText2Props[];
+
+  // --- ステート管理 ---
   let selectedApi = $state<ApiDefinition | null>(null);
   let selectedKeyFile = $state(""); 
   let serverPresets = $state(createFreshServer());
@@ -34,6 +48,7 @@
   let secretBase64 = $state("");
   let sessionValues = $state<NameValue[]>([]);
 
+  // FIDO フラグとカウンター
   let flagUP = $state(true);   
   let flagUV = $state(true); 
   let flagBE = $state(false); 
@@ -52,11 +67,15 @@
   const keyFiles = $derived(data.keyFiles || []);
   const keyContents = $derived(data.keyContents as Record<string, CredentialRecord> || {});
 
+  // 認証器フラグの計算 (バイトデータ)
   let calculatedFlags = $derived(
     (flagUP ? 0x01 : 0) | (flagUV ? 0x04 : 0) | (flagBE ? 0x08 : 0) |
     (flagBS ? 0x10 : 0) | (flagAT ? 0x40 : 0) | (flagED ? 0x80 : 0)
   );
 
+  /**
+   * 鍵ファイル選択時にフラグとサインカウントを初期化
+   */
   $effect(() => {
     if (selectedKeyFile !== previousKeyFile) {
       previousKeyFile = selectedKeyFile;
@@ -76,9 +95,13 @@
   let selectedServerData = $derived(serverPresets.find((p) => p.label === serverState.value));
   let selectedClientData = $derived(clientPresets.find((p) => p.label === clientState.value));
 
+  /**
+   * 置換用パラメータの集約
+   */
   let allParams = $derived.by(() => {
     const params: Record<string, string> = {};
     sessionValues.forEach((v) => { if(v.name) params[v.name] = v.value; });
+    
     if (selectedKeyFile && keyContents[selectedKeyFile]) {
       const k = keyContents[selectedKeyFile];
       params['key.credentialId'] = k.credentialId || "";
@@ -88,14 +111,19 @@
       params['key.displayName'] = k.displayName || "";
       params['selected_key_user_id'] = k.userId || "";
     }
+    
     selectedServerData?.items.forEach((i) => { if (i.name) params[i.name] = i.value; });
     selectedClientData?.items.forEach((i) => { if (i.name) params[i.name] = i.value; });
     staticPresets.forEach((i) => { if (i.name) params[i.name] = i.value; });
     if (secretBase64) params['secret_base64'] = secretBase64;
     for (const [k, v] of Object.entries(genData)) { params[`auth.${k}`] = String(v); }
+    
     return params;
   });
 
+  /**
+   * テンプレート置換ロジック
+   */
   function processTemplate(input: unknown): unknown {
     if (typeof input === 'string') {
       return input.replace(/\${([\w.-]+)}|#{([\w.-]+)}/g, (match, p1, p2) => {
@@ -114,6 +142,7 @@
     return input;
   }
 
+  // URL / Header / Body の解決
   let resolvedUrl = $derived.by(() => {
     if (!selectedApi) return "";
     let baseUrl = String(processTemplate(selectedApi.url));
@@ -128,26 +157,42 @@
   let resolvedHeaders = $derived(selectedApi?.headers.map((h: NameValue) => ({ name: h.name, value: String(processTemplate(h.value)) })) || []);
   let resolvedBody = $derived.by(() => (!selectedApi || selectedApi.method === 'GET' || !selectedApi.body) ? null : processTemplate(selectedApi.body));
 
+  /**
+   * FIDO 署名データ生成 (バックエンド呼び出し)
+   */
   async function triggerFidoGeneration() {
     if (!browser || !selectedApi || !selectedKeyFile) return;
     const bodyStr = JSON.stringify(selectedApi.body || "");
     const urlStr = selectedApi.url || "";
+    // パラメータに #{auth. プレースホルダーが含まれる場合のみ実行
     if (!bodyStr.includes('#{auth.') && !urlStr.includes('#{auth.')) return;
+
     genError = null;
     const challenge = sessionValues.find(v => v.name === 'challenge')?.value || '';
     const rpId = sessionValues.find(v => v.name === 'rpId')?.value || 'localhost';
     const origin = sessionValues.find(v => v.name === 'origin')?.value || 'http://localhost:3000';
+    
     try {
       const res = await fetch('/fido/authenticate', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ challenge, rpId, origin, keyFileName: selectedKeyFile, flagsOverride: calculatedFlags, signCountOverride: manualSignCount })
+        method: 'POST', 
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          challenge, rpId, origin, 
+          keyFileName: selectedKeyFile, 
+          flagsOverride: calculatedFlags, 
+          signCountOverride: manualSignCount 
+        })
       });
       const responseData = await res.json();
       if (responseData.error) { genError = responseData.error; genData = {}; }
       else { genData = { ...responseData }; }
-    } catch (err: unknown) { genError = `通信失敗: ${err instanceof Error ? err.message : String(err)}`; genData = {}; }
+    } catch (err: unknown) { 
+      genError = `通信失敗: ${err instanceof Error ? err.message : String(err)}`; 
+      genData = {}; 
+    }
   }
 
+  // 設定変更時に自動で署名を再計算
   $effect(() => {
     if (selectedApi && selectedKeyFile && calculatedFlags !== undefined && manualSignCount !== undefined) {
       untrack(() => triggerFidoGeneration());
@@ -167,20 +212,37 @@
     return () => window.removeEventListener("pageshow", handlePageShow);
   });
 
+  /**
+   * API 実行実行
+   */
   async function handleExecute() {
     if (!browser || !selectedApi) return;
     const bodyStr = typeof resolvedBody === 'string' ? resolvedBody : JSON.stringify(resolvedBody);
+    
+    // 生成データのチェック
     if (bodyStr?.includes('#{auth.') || resolvedUrl.includes('#{auth.')) {
       alert("FIDOデータの生成が未完了です。署名を再生成してください。");
       return;
     }
-    const payload = { method: selectedApi.method, url: resolvedUrl, headers: resolvedHeaders, body: resolvedBody, keyFile: selectedKeyFile, usedSignCount: manualSignCount };
+
+    const payload = { 
+      method: selectedApi.method, 
+      url: resolvedUrl, 
+      headers: resolvedHeaders, 
+      body: resolvedBody, 
+      keyFile: selectedKeyFile, 
+      usedSignCount: manualSignCount 
+    };
+
     try {
       const response = await fetch('/fido/auth_gen_call', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+        method: 'POST', 
+        headers: { 'Content-Type': 'application/json' }, 
+        body: JSON.stringify(payload)
       });
       if (response.ok) { 
-        // eslint-disable-next-line
+        // ✅ 修正: ESLint 警告の回避 (ルート相対パスを使用)
+        // eslint-disable-next-line svelte/no-navigation-without-resolve
         await goto('/fido/auth_result'); 
       }
       else { alert(`API Error: ${response.status}`); }

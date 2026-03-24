@@ -1,16 +1,8 @@
 import fs from 'fs';
 import path from 'path';
 import type { PageServerLoad } from './$types';
-import { SessionContext } from '$lib/server/session-context';
-import { getApiCatalog, getKeyData } from '$lib/server/util/file-list';
 
-/**
- * FIDO認証生成ページサーバーのロード関数。
- * 外部の data/oauth フォルダからプリセットを動的に読み込みます。
- */
-export const load: PageServerLoad = async ({ cookies, locals }) => {
-    const simses = locals.simses || cookies.get('simses') || 'default-session';
-    
+export const load: PageServerLoad = async () => {
     // 外部 JSON 読み込み用ヘルパー
     const loadExternalJson = (relativeContextPath: string) => {
         const fullPath = path.resolve(process.cwd(), relativeContextPath);
@@ -25,13 +17,10 @@ export const load: PageServerLoad = async ({ cookies, locals }) => {
     };
 
     return {
-        ...getKeyData(),
-        apiCatalog: getApiCatalog(),
-        sessionContext: SessionContext.getAsNameValues(simses),
-        
-        // 外部プリセットデータの読み込み
         serverPresets: loadExternalJson('data/oauth/server.json'),
         clientPresets: loadExternalJson('data/oauth/client.json'),
-        staticPresets: loadExternalJson('data/oauth/static.json')
+        scopePresets: loadExternalJson('data/oauth/scope.json'),
+        staticPresets: loadExternalJson('data/oauth/static.json'),
+        authUrlPresets: loadExternalJson('data/oauth/auth_url.json')
     };
 };

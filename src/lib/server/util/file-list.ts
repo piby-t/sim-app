@@ -2,16 +2,28 @@ import fs from 'fs';
 import path from 'path';
 import type { ApiDefinition, CredentialRecord } from '$lib/types';
 
+/**
+ * 実行時のカレントディレクトリを基点にする
+ * 開発時はプロジェクトルート、配布後はパッケージルートを指します。
+ */
 const baseDir = process.cwd();
-const API_DIR = path.resolve(baseDir, 'src/lib/data/fido/api');
-const KEY_DIR = path.resolve(baseDir, 'src/lib/data/fido/key');
+
+// パスを src/lib/data から プロジェクト直下の data/ へ変更
+const DATA_ROOT = path.resolve(baseDir, 'data');
+const API_DIR = path.resolve(DATA_ROOT, 'fido/api');
+const KEY_DIR = path.resolve(DATA_ROOT, 'fido/key');
 
 /**
  * FIDO APIカタログを読み込む (ディレクトリ・ファイル両対応)
  */
 export function getApiCatalog(): Record<string, ApiDefinition[]> {
     const apiCatalog: Record<string, ApiDefinition[]> = {};
-    if (!fs.existsSync(API_DIR)) return apiCatalog;
+    
+    // フォルダが存在しない場合はログを出して空で返す
+    if (!fs.existsSync(API_DIR)) {
+        console.warn(`[WARN] API directory not found: ${API_DIR}`);
+        return apiCatalog;
+    }
 
     const entries = fs.readdirSync(API_DIR, { withFileTypes: true });
     for (const entry of entries) {
@@ -44,9 +56,20 @@ export function getApiCatalog(): Record<string, ApiDefinition[]> {
 export function getKeyData() {
     const keyFiles: string[] = [];
     const keyContents: Record<string, CredentialRecord> = {};
-    if (!fs.existsSync(KEY_DIR)) return { keyFiles, keyContents };
+
+    // 鍵保存フォルダが存在しない場合は作成を試みる（配布直後の初回実行対策）
+    if (!fs.existsSync(KEY_DIR)) {
+        try {
+            fs.mkdirSync(KEY_DIR, { recursive: true });
+            console.log(`[INFO] Created Key directory: ${KEY_DIR}`);
+        } catch (e) {
+            console.error(`[ERROR] Failed to create Key directory: ${KEY_DIR}`, e);
+            return { keyFiles, keyContents };
+        }
+    }
 
     const files = fs.readdirSync(KEY_DIR).filter(f => f.endsWith('.json'));
+    
     // 更新日時順にソート (最新が先頭)
     const sorted = files.sort((a, b) =>
         fs.statSync(path.join(KEY_DIR, b)).mtime.getTime() - fs.statSync(path.join(KEY_DIR, a)).mtime.getTime()

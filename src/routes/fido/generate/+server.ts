@@ -1,11 +1,30 @@
 import { json } from '@sveltejs/kit';
 import fs from 'fs';
 import path from 'path';
-import keyMaster from '$lib/data/fido/key_master.json';
 import { createClientDataJSON, createAuthData, createAttestationObjectNone } from '$lib/server/fido/fido-protocol';
 import { fromBase64URL } from '$lib/server/fido/fido-utils';
 import type { FidoProfile, KeyMasterConfig } from '$lib/types';
 
+/**
+ * 💡 修正ポイント: 外部 JSON 読み込みヘルパー
+ * 実行時のルート (process.cwd) を基点に、配布後の外部 data フォルダから取得します。
+ */
+function loadExternalJson<T>(relativePath: string): T | null {
+    const fullPath = path.resolve(process.cwd(), relativePath);
+    try {
+        if (fs.existsSync(fullPath)) {
+            const content = fs.readFileSync(fullPath, 'utf-8');
+            return JSON.parse(content) as T;
+        }
+    } catch (e) {
+        console.error(`[ERROR] Failed to load external JSON: ${fullPath}`, e);
+    }
+    return null;
+}
+
+/**
+ * JWK の座標 (x, y) を 32バイトにパディングする
+ */
 function pad32(arr: Uint8Array): Uint8Array {
   if (arr.length === 32) return arr;
   const padded = new Uint8Array(32);
@@ -17,21 +36,42 @@ function pad32(arr: Uint8Array): Uint8Array {
   return padded;
 }
 
+/**
+ * FIDO 登録用 Attestation 生成エンドポイント
+ */
 export async function POST({ request }) {
   try {
-    // ✅ 追加：UIから送られる override 値を受け取る
-    const { challenge, rpId, origin, keyFileName, type = "webauthn.create", flagsOverride, signCountOverride } = await request.json();
+    const { 
+        challenge, 
+        rpId, 
+        origin, 
+        keyFileName, 
+        type = "webauthn.create", 
+        flagsOverride, 
+        signCountOverride 
+    } = await request.json();
 
     if (!keyFileName) return json({ error: "keyFileName is required" }, { status: 400 });
 
-    const keyPath = path.join(process.cwd(), 'src', 'lib', 'data', 'fido', 'key', keyFileName);
-    if (!fs.existsSync(keyPath)) return json({ error: "Key file not found" }, { status: 404 });
+    // 💡 修正ポイント: 外部パス解決 (src/lib/data ではなく data/ を参照)
+    const keyPath = path.resolve(process.cwd(), 'data', 'fido', 'key', keyFileName);
+    if (!fs.existsSync(keyPath)) {
+        return json({ error: `Key file not found: ${keyPath}` }, { status: 404 });
+    }
 
     const record = JSON.parse(fs.readFileSync(keyPath, 'utf-8'));
     
-    const activeProfile = keyMaster.activeProfile as "ios" | "android";
-    const profile: FidoProfile = (keyMaster as KeyMasterConfig)[activeProfile];
+    // 💡 修正ポイント: key_master.json を外部からロード
+    const keyMaster = loadExternalJson<KeyMasterConfig>('data/fido/key_master.json');
+    if (!keyMaster) {
+        return json({ error: "key_master.json not found in external data folder" }, { status: 500 });
+    }
 
+    const activeProfile = keyMaster.activeProfile as "ios" | "android";
+    const profile: FidoProfile = keyMaster[activeProfile];
+    if (!profile) return json({ error: `Profile ${activeProfile} not found` }, { status: 500 });
+
+    // Origin の決定
     let finalOrigin = origin || "http://localhost:5173";
     if (activeProfile === 'android' && profile.hash) {
       finalOrigin = profile.hash;
@@ -41,6 +81,8 @@ export async function POST({ request }) {
 
     const clientDataJSON = createClientDataJSON(type, challenge, finalOrigin);
     const credentialIdBytes = fromBase64URL(record.credentialId);
+    
+    // 公開鍵 (COSE形式) の組み立て
     const xBytes = pad32(fromBase64URL(record.publicKeyJwk.x));
     const yBytes = pad32(fromBase64URL(record.publicKeyJwk.y));
     
@@ -56,10 +98,10 @@ export async function POST({ request }) {
     publicKeyCose.set(yPrefix, offset); offset += yPrefix.length;
     publicKeyCose.set(yBytes, offset);
 
-    // 一旦標準データで作成
+    // 認証データ (authData) の生成
     const authData = await createAuthData(rpId, profile.defaultFlags, profile.aaguid, credentialIdBytes, publicKeyCose);
 
-    // ✅ 追加：フラグやSignCountが手動で上書きされた場合、バイナリを直接書き換える
+    // 💡 UIからの手動上書きがある場合、バイナリを直接操作
     if (flagsOverride !== undefined || signCountOverride !== undefined) {
       if (flagsOverride !== undefined) {
         authData[32] = flagsOverride & 0xff;
@@ -72,7 +114,7 @@ export async function POST({ request }) {
       }
     }
 
-    // 書き換わった authData で Attestation を再構成
+    // AttestationObject の最終構成 (none 形式)
     const attestationObject = createAttestationObjectNone(authData);
 
     return json({
@@ -84,7 +126,7 @@ export async function POST({ request }) {
     });
 
   } catch (e: unknown) {
-    console.error("Generate Error:", e);
+    console.error("[FIDO GENERATE ERROR]", e);
     const errorMessage = e instanceof Error ? e.message : String(e);
     return json({ error: errorMessage }, { status: 500 });
   }

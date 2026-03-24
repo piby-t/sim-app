@@ -1,20 +1,49 @@
+import fs from 'fs';
+import path from 'path';
 import { Client } from 'ssh2';
 import type { HttpExecutor, HttpRequestOptions, HttpResponse } from './HttpExecutor';
 import type { NameValue, JsonValue } from '$lib/types';
-import sshConfig from '$lib/data/sys/ssh.json';
+
+// SSH設定用の型定義を追加
+interface SSHConfig {
+    sshuse?: boolean;
+    host?: string;
+    port?: number;
+    username?: string;
+    password?: string;
+    privateKeyPath?: string;
+}
 
 /**
  * SSH経由でリモートサーバー上で curl コマンドを実行するエグゼキューター
  */
 export class SSHCurlExecutor implements HttpExecutor {
+    /**
+     * 設定ファイルを動的に読み込む内部メソッド
+     * any を排除し、SSHConfig 型を返却するように修正
+     */
+    private loadConfig(): SSHConfig {
+        const configPath = path.resolve(process.cwd(), 'data/sys/ssh.json');
+        try {
+            if (fs.existsSync(configPath)) {
+                const content = fs.readFileSync(configPath, 'utf-8');
+                return JSON.parse(content) as SSHConfig;
+            }
+        } catch (err) {
+            console.error('[SSHCurlExecutor] Failed to load ssh.json:', err);
+        }
+        return {}; // 読み込めない場合は空のオブジェクトを返す
+    }
+
     async execute(options: HttpRequestOptions): Promise<HttpResponse> {
+        const sshConfig = this.loadConfig();
+
         return new Promise((resolve, reject) => {
             const conn = new Client();
 
             conn.on('ready', () => {
                 let curlCmd = `curl -i -sS -X ${options.method} "${options.url}"`;
                 
-                // Content-Type 判定用のヘッダー正規化
                 const headerObj = Object.fromEntries(
                     options.headers.map((h: NameValue) => [h.name.toLowerCase(), h.value])
                 );
@@ -23,7 +52,6 @@ export class SSHCurlExecutor implements HttpExecutor {
                     curlCmd += ` -H "${h.name}: ${h.value}"`;
                 });
 
-                // ボディの構築ロジック (JSON対応)
                 if (options.method !== 'GET' && options.body) {
                     let bodyStr = "";
                     const isJson = headerObj['content-type']?.includes('application/json');
@@ -48,7 +76,6 @@ export class SSHCurlExecutor implements HttpExecutor {
                         bodyStr = options.body as string;
                     }
                     
-                    // シェルエスケープ処理
                     curlCmd += ` --data '${bodyStr.replace(/'/g, "'\\''")}'`;
                 }
 
@@ -61,7 +88,6 @@ export class SSHCurlExecutor implements HttpExecutor {
                     stream.on('data', (d: Buffer) => { stdoutData += d.toString(); });
                     stream.stderr.on('data', (d: Buffer) => { stderrData += d.toString(); });
 
-                    // code を使って終了ステータスをチェックするように修正
                     stream.on('close', (code: number) => {
                         conn.end();
                         
@@ -76,17 +102,18 @@ export class SSHCurlExecutor implements HttpExecutor {
             }).on('error', (err) => {
                 reject(new Error(`SSH Connection Failed: ${err.message}`));
             }).connect({
-                host: sshConfig.host,
-                port: sshConfig.port,
-                username: sshConfig.username,
-                password: sshConfig.password
+                // 型定義があるため、プロパティ補完が効き、実行時エラーを防げます
+                host: sshConfig.host || '127.0.0.1',
+                port: sshConfig.port || 22,
+                username: sshConfig.username || 'root',
+                password: sshConfig.password,
+                privateKey: sshConfig.privateKeyPath 
+                    ? fs.readFileSync(path.resolve(process.cwd(), sshConfig.privateKeyPath)) 
+                    : undefined
             });
         });
     }
 
-    /**
-     * curl -i の出力を解析して HttpResponse に変換する
-     */
     private parseCurlResponse(raw: string): HttpResponse {
         if (!raw) return { status: 500, headers: [], body: "Empty response from remote server" };
 
