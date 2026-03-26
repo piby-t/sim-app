@@ -1,26 +1,29 @@
-import fs from 'fs';
-import path from 'path';
 import type { PageServerLoad } from './$types';
+import { loadExternalJson } from '$lib/server/util/file-loader'; // ✅ 共通関数をインポート
+import type { SelectArrayText2Props, SelectArrayCheckProps, NameValue } from '$lib/types';
 
+/**
+ * 認可リクエスト生成ページサーバーのロード関数。
+ * 共通の file-loader を使用して、外部 data フォルダから全プリセットを動的に読み込みます。
+ */
 export const load: PageServerLoad = async () => {
-    // 外部 JSON 読み込み用ヘルパー
-    const loadExternalJson = (relativeContextPath: string) => {
-        const fullPath = path.resolve(process.cwd(), relativeContextPath);
-        try {
-            if (fs.existsSync(fullPath)) {
-                return JSON.parse(fs.readFileSync(fullPath, 'utf-8'));
-            }
-        } catch (e) {
-            console.error(`[ERROR] Failed to load preset: ${fullPath}`, e);
-        }
-        return { list: [] };
-    };
+    /**
+     * ✅ 修正ポイント: 
+     * 5つの JSON すべてが { "list": [...] } という構造であることを型定義に反映。
+     * fallback を指定しているため、戻り値は非 null ( { list: [] } 以上 ) として確定します。
+     */
+    const serverPresets = loadExternalJson<{ list: SelectArrayText2Props[] }>('data/oauth/server.json', { list: [] })!;
+    const clientPresets = loadExternalJson<{ list: SelectArrayText2Props[] }>('data/oauth/client.json', { list: [] })!;
+    const scopePresets = loadExternalJson<{ list: SelectArrayCheckProps[] }>('data/oauth/scope.json', { list: [] })!;
+    const staticPresets = loadExternalJson<{ list: NameValue[] }>('data/oauth/static.json', { list: [] })!;
+    const authUrlPresets = loadExternalJson<{ list: NameValue[] }>('data/oauth/auth_url.json', { list: [] })!;
 
     return {
-        serverPresets: loadExternalJson('data/oauth/server.json'),
-        clientPresets: loadExternalJson('data/oauth/client.json'),
-        scopePresets: loadExternalJson('data/oauth/scope.json'),
-        staticPresets: loadExternalJson('data/oauth/static.json'),
-        authUrlPresets: loadExternalJson('data/oauth/auth_url.json')
+        // --- 外部プリセットデータの提供 ---
+        serverPresets,
+        clientPresets,
+        scopePresets,
+        staticPresets,
+        authUrlPresets
     };
 };

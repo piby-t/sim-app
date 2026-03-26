@@ -1,0 +1,17 @@
+{
+    "group": "samples",
+    "display": "sample post",
+    "description": "認可コードを使用してアクセストークンを取得します。",
+    "method": "POST",
+    "url": "http://#{host}:8080/realms/#{realm-name}/protocol/openid-connect/token",
+    "headers": [
+        { "name": "Content-Type", "value": "application/x-www-form-urlencoded" },
+        { "name": "Authorization", "value": "Basic #{secret_base64}" }
+    ],
+    "queries": [],
+    "body": [
+        { "name": "grant_type", "value": "authorization_code" },
+        { "name": "code", "value": "${code}" },
+        { "name": "redirect_uri", "value": "#{redirect_uri}" }
+    ]
+}

@@ -3,24 +3,8 @@ import fs from 'fs';
 import path from 'path';
 import { createClientDataJSON, createAuthData, createAttestationObjectNone } from '$lib/server/fido/fido-protocol';
 import { fromBase64URL } from '$lib/server/fido/fido-utils';
+import { loadExternalJson } from '$lib/server/util/file-loader'; // ✅ 共通関数をインポート
 import type { FidoProfile, KeyMasterConfig } from '$lib/types';
-
-/**
- * 💡 修正ポイント: 外部 JSON 読み込みヘルパー
- * 実行時のルート (process.cwd) を基点に、配布後の外部 data フォルダから取得します。
- */
-function loadExternalJson<T>(relativePath: string): T | null {
-    const fullPath = path.resolve(process.cwd(), relativePath);
-    try {
-        if (fs.existsSync(fullPath)) {
-            const content = fs.readFileSync(fullPath, 'utf-8');
-            return JSON.parse(content) as T;
-        }
-    } catch (e) {
-        console.error(`[ERROR] Failed to load external JSON: ${fullPath}`, e);
-    }
-    return null;
-}
 
 /**
  * JWK の座標 (x, y) を 32バイトにパディングする
@@ -38,6 +22,7 @@ function pad32(arr: Uint8Array): Uint8Array {
 
 /**
  * FIDO 登録用 Attestation 生成エンドポイント
+ * 外部の data/fido フォルダを参照し、ポータブルに動作します。
  */
 export async function POST({ request }) {
   try {
@@ -53,15 +38,7 @@ export async function POST({ request }) {
 
     if (!keyFileName) return json({ error: "keyFileName is required" }, { status: 400 });
 
-    // 💡 修正ポイント: 外部パス解決 (src/lib/data ではなく data/ を参照)
-    const keyPath = path.resolve(process.cwd(), 'data', 'fido', 'key', keyFileName);
-    if (!fs.existsSync(keyPath)) {
-        return json({ error: `Key file not found: ${keyPath}` }, { status: 404 });
-    }
-
-    const record = JSON.parse(fs.readFileSync(keyPath, 'utf-8'));
-    
-    // 💡 修正ポイント: key_master.json を外部からロード
+    // 💡 修正ポイント: 共通 loader で key_master.json を取得
     const keyMaster = loadExternalJson<KeyMasterConfig>('data/fido/key_master.json');
     if (!keyMaster) {
         return json({ error: "key_master.json not found in external data folder" }, { status: 500 });
@@ -70,6 +47,14 @@ export async function POST({ request }) {
     const activeProfile = keyMaster.activeProfile as "ios" | "android";
     const profile: FidoProfile = keyMaster[activeProfile];
     if (!profile) return json({ error: `Profile ${activeProfile} not found` }, { status: 500 });
+
+    // 💡 修正ポイント: 外部パス解決 (配布パッケージ直下の data/ を参照)
+    const keyPath = path.resolve(process.cwd(), 'data', 'fido', 'key', keyFileName);
+    if (!fs.existsSync(keyPath)) {
+        return json({ error: `Key file not found: ${keyPath}` }, { status: 404 });
+    }
+
+    const record = JSON.parse(fs.readFileSync(keyPath, 'utf-8'));
 
     // Origin の決定
     let finalOrigin = origin || "http://localhost:5173";
@@ -101,7 +86,7 @@ export async function POST({ request }) {
     // 認証データ (authData) の生成
     const authData = await createAuthData(rpId, profile.defaultFlags, profile.aaguid, credentialIdBytes, publicKeyCose);
 
-    // 💡 UIからの手動上書きがある場合、バイナリを直接操作
+    // ✅ UIからの手動上書きがある場合、バイナリを直接操作
     if (flagsOverride !== undefined || signCountOverride !== undefined) {
       if (flagsOverride !== undefined) {
         authData[32] = flagsOverride & 0xff;

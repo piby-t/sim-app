@@ -2,30 +2,19 @@ import fs from 'fs';
 import path from 'path';
 import { SessionContext } from '$lib/server/session-context';
 import type { PageServerLoad } from './$types';
-import type { ApiDefinition } from '$lib/types';
+import type { ApiDefinition, SelectArrayText2Props, NameValue } from '$lib/types';
+import { loadExternalJson } from '$lib/server/util/file-loader'; // ✅ 共通関数をインポート
 
 /**
  * メインページのサーバーサイドロード関数
- * 外部の data フォルダから API 定義とプリセットを動的に読み込みます。
+ * 外部の data フォルダから API 定義カタログとプリセットを動的に読み込みます。
  */
 export const load: PageServerLoad = async ({ locals }) => {
+    // 1. APIカタログの構築パス解決
     const apiDir = path.resolve(process.cwd(), 'data/oauth/api');
     const apiCatalog: Record<string, ApiDefinition[]> = {};
 
-    // 外部 JSON 読み込み用ヘルパー
-    const loadExternalJson = (relativeContextPath: string) => {
-        const fullPath = path.resolve(process.cwd(), relativeContextPath);
-        try {
-            if (fs.existsSync(fullPath)) {
-                return JSON.parse(fs.readFileSync(fullPath, 'utf-8'));
-            }
-        } catch (e) {
-            console.error(`[ERROR] Failed to load preset: ${fullPath}`, e);
-        }
-        return { list: [] };
-    };
-
-    // APIカタログの構築
+    // 2. ディレクトリを走査してカタログを作成
     if (fs.existsSync(apiDir)) {
         try {
             const files = fs.readdirSync(apiDir).filter(f => f.endsWith('.json'));
@@ -45,12 +34,22 @@ export const load: PageServerLoad = async ({ locals }) => {
         }
     }
 
+    /**
+     * 3. ✅ 修正ポイント: 共通関数を利用したプリセットの取得
+     * 型エラー (2353) 回避のため、{ list: T[] } 構造を明示。
+     * fallback を指定しているため、戻り値は非 null として扱えます。
+     */
+    const serverPresets = loadExternalJson<{ list: SelectArrayText2Props[] }>('data/oauth/server.json', { list: [] })!;
+    const clientPresets = loadExternalJson<{ list: SelectArrayText2Props[] }>('data/oauth/client.json', { list: [] })!;
+    const staticPresets = loadExternalJson<{ list: NameValue[] }>('data/oauth/static.json', { list: [] })!;
+
     return {
         apiCatalog,
         sessionContext: SessionContext.getAsNameValues(locals.simses),
-        // 外部プリセットデータの読み込み
-        serverPresets: loadExternalJson('data/oauth/server.json'),
-        clientPresets: loadExternalJson('data/oauth/client.json'),
-        staticPresets: loadExternalJson('data/oauth/static.json')
+        
+        // --- 外部プリセットデータの提供 ---
+        serverPresets,
+        clientPresets,
+        staticPresets
     };
 };

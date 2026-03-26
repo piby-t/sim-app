@@ -1,34 +1,33 @@
-import fs from 'fs';
-import path from 'path';
 import type { PageServerLoad } from './$types';
 import { SessionContext } from '$lib/server/session-context';
 import { getApiCatalog } from '$lib/server/util/file-list';
+import { loadExternalJson } from '$lib/server/util/file-loader'; 
+import type { SelectArrayText2Props, NameValue } from '$lib/types';
 
 /**
  * FIDO Challenge ページサーバーのロード関数。
- * 外部の data フォルダからプリセットを動的に読み込みます。
  */
 export const load: PageServerLoad = async ({ locals }) => {
-    // 外部 JSON 読み込み用ヘルパー
-    const loadExternalJson = (relativeContextPath: string) => {
-        const fullPath = path.resolve(process.cwd(), relativeContextPath);
-        try {
-            if (fs.existsSync(fullPath)) {
-                return JSON.parse(fs.readFileSync(fullPath, 'utf-8'));
-            }
-        } catch (e) {
-            console.error(`[ERROR] Failed to load preset: ${fullPath}`, e);
-        }
-        return { list: [] }; // 失敗時のフォールバック
-    };
+    // セッション情報の取得
+    const sessionValues = SessionContext.getAsNameValues(locals.simses);
+
+    /**
+     * ✅ 修正ポイント: 
+     * fallback を指定しているため、戻り値は「null にならない型」として推論されます。
+     * これにより、return 時の ?? 判定を排除し、コードをより真っ当でシンプルにします。
+     */
+    const serverPresets = loadExternalJson<{ list: SelectArrayText2Props[] }>('data/oauth/server.json', { list: [] })!;
+    const clientPresets = loadExternalJson<{ list: SelectArrayText2Props[] }>('data/oauth/client.json', { list: [] })!;
+    const staticPresets = loadExternalJson<{ list: NameValue[] }>('data/oauth/static.json', { list: [] })!;
 
     return {
         apiCatalog: getApiCatalog(),
-        sessionContext: SessionContext.getAsNameValues(locals.simses),
+        sessionContext: sessionValues,
         
-        // --- 外部プリセットデータの追加 ---
-        serverPresets: loadExternalJson('data/oauth/server.json'),
-        clientPresets: loadExternalJson('data/oauth/client.json'),
-        staticPresets: loadExternalJson('data/oauth/static.json')
+        // --- 外部プリセットデータの提供 ---
+        // loadExternalJson で fallback を保証しているため、そのまま渡して OK です
+        serverPresets,
+        clientPresets,
+        staticPresets
     };
 };
